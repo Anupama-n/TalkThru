@@ -12,6 +12,10 @@ import Link from "next/link";
 import { toast } from "sonner";
 import FormField from "@/app/components/FormField";
 import {useRouter} from "next/navigation";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from "@firebase/auth";
+
+import {auth} from "@/firebase/client";
+import {signIn, signUp} from "@/lib/actions/auth.action";
 
 type FormType = "sign-in" | "sign-up";
 
@@ -37,23 +41,54 @@ const AuthForm = ({ type }: { type: FormType }) => {
         },
     });
 
-    function onSubmit(values: z.infer<typeof formSchema>) {
+    async function onSubmit(values: z.infer<typeof formSchema>) {
+        const {name, email, password} = values;
+
         try {
             if (type === "sign-up") {
-                toast.success('Account created successfully! Please Sign In.')
-                console.log("Sign Up", values);
+                const userCredentials = await createUserWithEmailAndPassword(auth, email, password);
+
+                const result = await signUp({
+                    uid: userCredentials.user.uid,
+                    name: name ?? "",
+                    email,
+                    password,
+                });
+
+                if (!result || !result.success) {
+                    toast.error(result?.message ?? "Unknown error during sign-up.");
+                    return;
+                }
+
+                toast.success('Account created successfully! Please Sign In.');
+                router.push('/sign-in');
             } else {
+                const userCredentials = await signInWithEmailAndPassword(auth, email, password);
+
+                const idToken = await userCredentials.user?.getIdToken();
+                if (!idToken) {
+                    toast.error('There was an error signing in.');
+                    return;
+                }
+
+                const response = await signIn({email, idToken});
+
+                if (!response || !response.success) {
+                    toast.error(response?.message ?? "Unknown error during sign-in.");
+                    return;
+                }
+
                 toast.success('Signed in successfully!');
                 router.push('/');
                 console.log("Sign In", values);
             }
         } catch (error) {
-            console.error(error);
+            console.error("Authentication error:", error);
             toast.error(`There was an error: ${error}`);
         }
     }
 
-    const isSignIn = type === "sign-in";
+        const isSignIn = type === "sign-in";
 
     return (
         <div className="card-border lg:min-w-[566px]">
@@ -108,4 +143,4 @@ const AuthForm = ({ type }: { type: FormType }) => {
     );
 };
 
-export default AuthForm;
+export default AuthForm
